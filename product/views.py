@@ -1,73 +1,82 @@
+from django.db.models import Avg, Count
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
 from .models import Category, Product, Review
+from .serializers import (
+    CategorySerializer,
+    ProductSerializer,
+    ReviewSerializer,
+    ProductWithReviewsSerializer,
+)
 
 
 @api_view(["GET"])
 def category_list_api_view(request):
-    categories = Category.objects.all()
-    data = [{"id": c.id, "name": c.name} for c in categories]
+    categories = Category.objects.annotate(products_count=Count("products")).order_by("id")
+    data = CategorySerializer(categories, many=True).data
     return Response(data=data)
 
 
 @api_view(["GET"])
 def category_detail_api_view(request, id):
-    try:
-        c = Category.objects.get(id=id)
-    except Category.DoesNotExist:
+    category = Category.objects.annotate(products_count=Count("products")).filter(id=id).first()
+    if not category:
         return Response({"error": "category not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    data = {"id": c.id, "name": c.name}
+    data = CategorySerializer(category, many=False).data
     return Response(data=data)
 
 
 @api_view(["GET"])
 def product_list_api_view(request):
-    products = Product.objects.all()
-    data = []
-    for p in products:
-        data.append({
-            "id": p.id,
-            "title": p.title,
-            "description": p.description,
-            "price": str(p.price),        # Decimal -> строка, чтобы JSON точно не ругался
-            "category": p.category_id,    # id категории
-        })
+    products = Product.objects.select_related("category").order_by("id")
+    data = ProductSerializer(products, many=True).data
     return Response(data=data)
 
 
 @api_view(["GET"])
 def product_detail_api_view(request, id):
-    try:
-        p = Product.objects.get(id=id)
-    except Product.DoesNotExist:
+    product = Product.objects.select_related("category").filter(id=id).first()
+    if not product:
         return Response({"error": "product not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    data = {
-        "id": p.id,
-        "title": p.title,
-        "description": p.description,
-        "price": str(p.price),
-        "category": p.category_id,
-    }
+    data = ProductSerializer(product, many=False).data
     return Response(data=data)
 
 
 @api_view(["GET"])
 def review_list_api_view(request):
-    reviews = Review.objects.all()
-    data = [{"id": r.id, "text": r.text, "product": r.product_id} for r in reviews]
+    reviews = Review.objects.select_related("product").order_by("id")
+    data = ReviewSerializer(reviews, many=True).data
     return Response(data=data)
 
 
 @api_view(["GET"])
 def review_detail_api_view(request, id):
-    try:
-        r = Review.objects.get(id=id)
-    except Review.DoesNotExist:
+    review = Review.objects.select_related("product").filter(id=id).first()
+    if not review:
         return Response({"error": "review not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    data = {"id": r.id, "text": r.text, "product": r.product_id}
+    data = ReviewSerializer(review, many=False).data
     return Response(data=data)
+
+
+@api_view(["GET"])
+def products_reviews_api_view(request):
+    # общий средний балл всех отзывов
+    overall = Review.objects.aggregate(rating=Avg("stars"))["rating"]
+    overall_rating = round(float(overall), 2) if overall is not None else 0
+
+    # товары + отзывы + средний балл по каждому товару
+    products = (
+        Product.objects.select_related("category")
+        .prefetch_related("reviews")
+        .annotate(rating=Avg("reviews__stars"))
+        .order_by("id")
+    )
+
+    products_data = ProductWithReviewsSerializer(products, many=True).data
+
+    return Response({
+        "rating": overall_rating,
+        "results": products_data
+    })
