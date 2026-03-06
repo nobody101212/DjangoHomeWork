@@ -11,19 +11,20 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source="category.name", read_only=True)
-
     class Meta:
         model = Product
-        fields = ("id", "title", "description", "price", "category", "category_name")
+        fields = ("id", "title", "description", "price", "category")
 
 
 class ReviewSerializer(serializers.ModelSerializer):
-    product_title = serializers.CharField(source="product.title", read_only=True)
-
     class Meta:
         model = Review
-        fields = ("id", "text", "stars", "product", "product_title")
+        fields = ("id", "text", "stars", "product")
+
+    def validate_stars(self, value):
+        if not (1 <= value <= 5):
+            raise serializers.ValidationError("stars must be between 1 and 5")
+        return value
 
 
 class ReviewNestedSerializer(serializers.ModelSerializer):
@@ -34,13 +35,8 @@ class ReviewNestedSerializer(serializers.ModelSerializer):
 
 class ProductWithReviewsSerializer(serializers.ModelSerializer):
     reviews = ReviewNestedSerializer(many=True, read_only=True)
-    rating = serializers.SerializerMethodField()
-    category_name = serializers.CharField(source="category.name", read_only=True)
+    rating = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Product
-        fields = ("id", "title", "description", "price", "category", "category_name", "rating", "reviews")
-
-    def get_rating(self, obj):
-        val = getattr(obj, "rating", None)
-        return round(float(val), 2) if val is not None else 0
+        fields = ("id", "title", "description", "price", "category", "rating", "reviews")
