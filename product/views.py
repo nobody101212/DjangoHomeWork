@@ -1,7 +1,13 @@
 from django.db.models import Avg, Count
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+
+from .models import UserConfirmation
+from .serializers import RegisterSerializer, ConfirmSerializer, LoginSerializer
+
 
 from .models import Category, Product, Review
 from .serializers import (
@@ -130,3 +136,53 @@ def products_reviews_api_view(request):
         "rating": overall_rating,
         "results": ProductWithReviewsSerializer(products, many=True).data
     })
+
+
+@api_view(["POST"])
+def register_view(request):
+    serializer = RegisterSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"message": "User created. Confirm your account."})
+    return Response(serializer.errors, status=400)
+
+
+@api_view(["POST"])
+def confirm_view(request):
+    serializer = ConfirmSerializer(data=request.data)
+    if serializer.is_valid():
+        username = serializer.validated_data["username"]
+        code = serializer.validated_data["code"]
+
+        try:
+            user = User.objects.get(username=username)
+            confirmation = UserConfirmation.objects.get(user=user)
+        except:
+            return Response({"error": "User not found"}, status=404)
+
+        if confirmation.code == code:
+            user.is_active = True
+            user.save()
+            confirmation.delete()
+            return Response({"message": "User confirmed"})
+        else:
+            return Response({"error": "Invalid code"}, status=400)
+
+    return Response(serializer.errors, status=400)
+
+
+@api_view(["POST"])
+def login_view(request):
+    serializer = LoginSerializer(data=request.data)
+    if serializer.is_valid():
+        user = authenticate(
+            username=serializer.validated_data["username"],
+            password=serializer.validated_data["password"]
+        )
+        if user:
+            if not user.is_active:
+                return Response({"error": "User not confirmed"}, status=403)
+            return Response({"message": "Login successful"})
+        return Response({"error": "Invalid credentials"}, status=400)
+
+    return Response(serializer.errors, status=400)

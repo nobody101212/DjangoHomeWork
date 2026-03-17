@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
+from django.contrib.auth.models import User
+from .models import UserConfirmation
 
 from .models import Category, Product, Review
 
@@ -105,3 +107,31 @@ class ProductWithReviewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ("id", "title", "description", "price", "category", "rating", "reviews")
+
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ("id", "username", "password")
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data["username"],
+            password=validated_data["password"],
+            is_active=False
+        )
+        UserConfirmation.objects.create(user=user)
+        return user
+
+
+class ConfirmSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    code = serializers.CharField()
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField()
