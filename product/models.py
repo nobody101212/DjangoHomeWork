@@ -41,3 +41,4 @@ class UserConfirmation(models.Model):
         if not self.code:
             self.code = str(random.randint(100000, 999999))
         super().save(*args, **kwargs)
+
